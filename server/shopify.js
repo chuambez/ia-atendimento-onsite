@@ -10,6 +10,7 @@ const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.SHOPIFY_REFRESH_TOKEN;
 const API_VERSION = '2024-04';
 const BASE_URL = STORE ? `https://${STORE}/admin/api/${API_VERSION}` : null;
+const STOREFRONT_BASE_URL = STORE ? `https://${STORE}` : null;
 
 // Caminho para persistir token atualizado
 const TOKEN_FILE = path.join(__dirname, '../.shopify-tokens.json');
@@ -202,9 +203,86 @@ function productSearchScore(product, query) {
   return score;
 }
 
+function extractHandlesFromSearchHtml(html) {
+  const handles = new Set();
+  const text = String(html || '');
+  const regex = /href=["']\/products\/([^"'#?\/]+)["']/gi;
+
+  let match = regex.exec(text);
+  while (match) {
+    if (match[1]) {
+      handles.add(match[1]);
+    }
+    match = regex.exec(text);
+  }
+
+  return Array.from(handles);
+}
+
+function mapStorefrontProductToInternal(product) {
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const images = Array.isArray(product.images)
+    ? product.images.map((img) => ({ src: img }))
+    : product.featured_image
+      ? [{ src: product.featured_image }]
+      : [];
+
+  return {
+    id: product.id,
+    title: product.title,
+    handle: product.handle,
+    body_html: product.description,
+    vendor: product.vendor,
+    tags: Array.isArray(product.tags) ? product.tags.join(',') : String(product.tags || ''),
+    images,
+    variants: variants.map((v) => ({
+      price: typeof v.price === 'number' ? String(v.price / 100) : String(v.price || '0'),
+      inventory_quantity:
+        typeof v.inventory_quantity === 'number' ? v.inventory_quantity : 0,
+      inventory_management: v.inventory_management || null,
+      inventory_policy: v.inventory_policy || null,
+    })),
+  };
+}
+
+async function getStorefrontProductByHandle(handle) {
+  if (!STOREFRONT_BASE_URL) return null;
+
+  const url = `${STOREFRONT_BASE_URL}/products/${encodeURIComponent(handle)}.js`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+
+  const product = await res.json();
+  if (!product || !product.id) return null;
+
+  return mapStorefrontProductToInternal(product);
+}
+
+async function searchProductsViaStorefront(query) {
+  if (!STOREFRONT_BASE_URL || !query || !query.trim()) return [];
+
+  const url = `${STOREFRONT_BASE_URL}/search?options%5Bprefix%5D=last&q=${encodeURIComponent(query.trim())}`;
+  const res = await fetch(url);
+  if (!res.ok) return [];
+
+  const html = await res.text();
+  const handles = extractHandlesFromSearchHtml(html).slice(0, 8);
+  if (handles.length === 0) return [];
+
+  const products = await Promise.all(handles.map((h) => getStorefrontProductByHandle(h)));
+
+  return products
+    .filter(Boolean)
+    .map((p) => ({ product: p, score: productSearchScore(p, query) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5)
+    .map((item) => item.product);
+}
+
 // Busca produtos por título/query
 async function searchProducts(query) {
-  const data = await shopifyGet('/products.json?limit=100&status=active');
+  const data = await shopifyGet('/products.json?limit=250&status=active');
   const products = Array.isArray(data.products) ? data.products : [];
 
   const ranked = products
@@ -213,6 +291,15 @@ async function searchProducts(query) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
     .map((item) => item.product);
+
+  // Fallback: quando não houver resultado ou a confiança estiver baixa,
+  // usa a busca pública da loja (ex: /search?q=garrafa+pacco).
+  if (ranked.length === 0 || (query && query.trim().split(/\s+/).length > 1 && ranked.length < 2)) {
+    const storefrontFallback = await searchProductsViaStorefront(query);
+    if (storefrontFallback.length > 0) {
+      return storefrontFallback;
+    }
+  }
 
   return ranked;
 }

@@ -202,13 +202,21 @@
         body: JSON.stringify({ message: text, sessionId: SESSION_ID }),
       });
 
-      const data = await res.json();
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = { error: null };
+      }
+
       removeTyping();
 
-      if (data.reply) {
+      if (res.ok && data.reply) {
         addMessage('assistant', data.reply);
       } else {
-        addMessage('assistant', 'Desculpe, não consegui processar sua mensagem. Tente novamente.');
+        const msg = data.error || `Não consegui processar sua mensagem agora (HTTP ${res.status}).`;
+        addMessage('assistant', msg);
       }
     } catch {
       removeTyping();
