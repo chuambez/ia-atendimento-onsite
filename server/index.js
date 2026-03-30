@@ -166,6 +166,11 @@ app.post('/api/admin/sessions/:sessionId/clear', (req, res) => {
   return res.json({ ok: true });
 });
 
+// GET / — redireciona para painel de atendimento
+app.get('/', (req, res) => {
+  return res.redirect('/dashboard/');
+});
+
 // GET /health — verificação de status
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', sessions: sessions.size });
