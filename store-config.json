@@ -1,0 +1,64 @@
+{
+  "store_name": "Empório da Garrafa",
+  "description": "Loja especializada em garrafas térmicas, copos, canecas e acessórios premium das principais marcas do mercado, com opção de personalização a laser.",
+
+  "hours": "Segunda a sexta: 9h às 18h | Sábado: 9h às 15h | Domingo: fechado",
+
+  "address": "Av. Pontes Vieira, 1733 - Dionísio Torres, Fortaleza/CE - CEP: 60135-237",
+
+  "shipping": {
+    "free_threshold": "Frete grátis para compras acima de R$ 299,00",
+    "deadline": "O prazo de entrega varia conforme o CEP e é informado no checkout antes da finalização do pedido",
+    "carriers": "Enviamos via Correios, Loggi, Jadlog e transportadoras parceiras",
+    "tracking": "O código de rastreio é enviado automaticamente após o despacho e também pode ser consultado na sua conta"
+  },
+
+  "returns": {
+    "policy": "Aceitamos trocas e devoluções em até 7 dias corridos após o recebimento, conforme o Código de Defesa do Consumidor",
+    "condition": "O produto deve estar sem uso, em perfeito estado e com embalagem original",
+    "contact": "Entre em contato pelo WhatsApp para iniciar o processo de forma rápida"
+  },
+
+  "customization": {
+    "available": true,
+    "description": "Personalize seu produto gratuitamente com gravação a laser! Ideal para presentes ou uso corporativo, com nome, frase ou logotipo",
+    "deadline": "Prazo adicional médio de 1 a 3 dias úteis para produção da personalização",
+    "how_to_order": "Selecione a opção de personalização na página do produto e envie os dados desejados antes de finalizar o pedido",
+    "restrictions": "Produtos personalizados não podem ser trocados ou devolvidos, exceto em caso de defeito"
+  },
+
+  "authenticity": {
+    "message": "Todos os produtos são 100% originais, adquiridos diretamente de distribuidores autorizados no Brasil",
+    "warranty": "Garantia oficial do fabricante conforme cada marca",
+    "certificate": "Todos os pedidos acompanham nota fiscal e procedência garantida"
+  },
+
+  "payment": {
+    "methods": "Cartão de crédito, Pix e boleto bancário",
+    "pix_discount": "5% de desconto para pagamentos via Pix",
+    "installments": "Parcelamento em até 6x sem juros ou até 12x com juros"
+  },
+
+  "faq": [
+    {
+      "question": "Quanto tempo leva para meu pedido chegar?",
+      "answer": "O prazo é informado no checkout de acordo com o seu CEP e começa a contar após a confirmação do pagamento."
+    },
+    {
+      "question": "Como faço para rastrear meu pedido?",
+      "answer": "Após o envio, você recebe o código de rastreio por e-mail. Também pode acompanhar acessando sua conta no site."
+    },
+    {
+      "question": "Os produtos são originais?",
+      "answer": "Sim. Trabalhamos apenas com produtos 100% originais, com nota fiscal e garantia do fabricante."
+    },
+    {
+      "question": "Posso personalizar meu produto?",
+      "answer": "Sim. A personalização a laser está disponível em diversos produtos e pode ser selecionada diretamente na página do item."
+    },
+    {
+      "question": "Como funciona a troca ou devolução?",
+      "answer": "Você pode solicitar em até 7 dias após o recebimento, desde que o produto esteja sem uso e na embalagem original."
+    }
+  ]
+}

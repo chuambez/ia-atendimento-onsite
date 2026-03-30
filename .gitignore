@@ -1,0 +1,4 @@
+node_modules/
+.env
+.shopify-tokens.json
+.vercel/

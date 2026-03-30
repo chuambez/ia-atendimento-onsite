@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Painel de Atendimento</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="conversations-pane">
+      <div class="pane-header">
+        <h1>Atendimento</h1>
+        <button id="refreshBtn" class="ghost-btn" type="button">Atualizar</button>
+      </div>
+
+      <div class="search-wrap">
+        <input id="searchInput" type="search" placeholder="Buscar por sessão..." />
+      </div>
+
+      <div id="sessionList" class="session-list"></div>
+    </aside>
+
+    <main class="chat-pane">
+      <header class="chat-header">
+        <div>
+          <strong id="chatTitle">Selecione uma conversa</strong>
+          <p id="chatSubtitle">As sessões do widget aparecem aqui em tempo real.</p>
+        </div>
+        <button id="clearSessionBtn" class="danger-btn" type="button" disabled>Limpar sessão</button>
+      </header>
+
+      <section id="messages" class="messages"></section>
+
+      <footer class="composer">
+        <textarea id="messageInput" rows="2" maxlength="1200" placeholder="Digite uma mensagem para simular atendimento..."></textarea>
+        <div class="composer-actions">
+          <button id="sendManualBtn" class="ghost-btn" type="button" disabled>Enviar manual</button>
+          <button id="sendAiBtn" class="primary-btn" type="button" disabled>Responder com IA</button>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
