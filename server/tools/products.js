@@ -2,10 +2,20 @@ const shopify = require('../shopify');
 
 async function handleSearchProducts({ query }) {
   try {
-    const products = await shopify.searchProducts(query);
+    const search = await shopify.searchProductsSmart(query);
+    const products = search.products || [];
 
     if (!products || products.length === 0) {
-      return { found: false, message: 'Nenhum produto encontrado para essa busca.' };
+      return {
+        found: false,
+        confidence: search.confidence || 'low',
+        needs_clarification: true,
+        clarification_hint:
+          search.clarification_hint || 'Nao encontrei com seguranca. Pergunte marca, tamanho ou cor.',
+        message: 'Nenhum produto encontrado para essa busca.',
+        strategies: search.strategies || ['admin_catalog'],
+        catalog_size: search.catalog_size || 0,
+      };
     }
 
     const results = await Promise.all(
@@ -27,7 +37,15 @@ async function handleSearchProducts({ query }) {
       })
     );
 
-    return { found: true, products: results };
+    return {
+      found: true,
+      products: results,
+      confidence: search.confidence || 'medium',
+      needs_clarification: Boolean(search.needs_clarification),
+      clarification_hint: search.clarification_hint || null,
+      strategies: search.strategies || ['admin_catalog'],
+      catalog_size: search.catalog_size || 0,
+    };
   } catch (err) {
     return {
       found: false,

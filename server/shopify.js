@@ -11,6 +11,7 @@ const REFRESH_TOKEN = process.env.SHOPIFY_REFRESH_TOKEN;
 const API_VERSION = '2024-04';
 const BASE_URL = STORE ? `https://${STORE}/admin/api/${API_VERSION}` : null;
 const STOREFRONT_BASE_URL = STORE ? `https://${STORE}` : null;
+const CATALOG_TTL_MS = 10 * 60 * 1000;
 
 // Caminho para persistir token atualizado
 const TOKEN_FILE = path.join(__dirname, '../.shopify-tokens.json');
@@ -20,6 +21,12 @@ let tokenState = {
   accessToken: STATIC_ACCESS_TOKEN || null,
   refreshToken: REFRESH_TOKEN || null,
   expiresAt: STATIC_ACCESS_TOKEN ? Number.MAX_SAFE_INTEGER : 0,
+};
+
+let catalogCache = {
+  products: [],
+  loadedAt: 0,
+  loadingPromise: null,
 };
 
 // Carrega tokens persistidos (caso o servidor tenha reiniciado)
@@ -182,25 +189,121 @@ function normalizeText(value) {
     .toLowerCase();
 }
 
+function stripHtml(value) {
+  return String(value || '').replace(/<[^>]+>/g, ' ');
+}
+
+function queryTokens(query) {
+  return normalizeText(query)
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t && t.length >= 2);
+}
+
+function productMetadataText(product) {
+  const variants = Array.isArray(product.variants) ? product.variants : [];
+  const options = Array.isArray(product.options) ? product.options : [];
+
+  const variantText = variants
+    .map((v) => [v.title, v.sku, v.barcode, v.option1, v.option2, v.option3].filter(Boolean).join(' '))
+    .join(' ');
+
+  const optionsText = options
+    .map((o) => [o.name, ...(Array.isArray(o.values) ? o.values : [])].filter(Boolean).join(' '))
+    .join(' ');
+
+  return normalizeText(
+    [
+      product.title,
+      product.handle,
+      product.vendor,
+      product.product_type,
+      product.tags,
+      stripHtml(product.body_html),
+      optionsText,
+      variantText,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
+}
+
 function productSearchScore(product, query) {
   const q = normalizeText(query).trim();
   if (!q) return 0;
 
-  const haystack = normalizeText(
-    [product.title, product.vendor, product.tags, product.body_html].filter(Boolean).join(' ')
-  );
+  const haystack = productMetadataText(product);
 
   if (!haystack) return 0;
 
   let score = 0;
-  if (haystack.includes(q)) score += 10;
+  if (haystack.includes(q)) score += 14;
 
-  const terms = q.split(/\s+/).filter(Boolean);
+  const title = normalizeText(product.title || '');
+  const handle = normalizeText(product.handle || '');
+  if (title === q) score += 20;
+  if (title.startsWith(q)) score += 10;
+  if (handle.includes(q)) score += 8;
+
+  const terms = queryTokens(q);
+  const titleTerms = queryTokens(title);
+  const titleSet = new Set(titleTerms);
+
   for (const term of terms) {
-    if (haystack.includes(term)) score += 2;
+    if (haystack.includes(term)) score += 3;
+    if (titleSet.has(term)) score += 4;
+    if (term.length >= 4 && handle.includes(term)) score += 2;
   }
 
   return score;
+}
+
+async function fetchAllActiveProducts() {
+  const all = [];
+  let sinceId = 0;
+  const maxPages = 40;
+
+  for (let page = 0; page < maxPages; page++) {
+    const suffix = sinceId > 0 ? `&since_id=${sinceId}` : '';
+    const data = await shopifyGet(`/products.json?limit=250&status=active${suffix}`);
+    const batch = Array.isArray(data.products) ? data.products : [];
+
+    if (batch.length === 0) break;
+
+    all.push(...batch);
+    sinceId = batch[batch.length - 1].id;
+
+    if (batch.length < 250) break;
+  }
+
+  return all;
+}
+
+async function ensureCatalog() {
+  const now = Date.now();
+  const isFresh = now - catalogCache.loadedAt < CATALOG_TTL_MS;
+
+  if (isFresh && catalogCache.products.length > 0) {
+    return catalogCache.products;
+  }
+
+  if (catalogCache.loadingPromise) {
+    await catalogCache.loadingPromise;
+    return catalogCache.products;
+  }
+
+  catalogCache.loadingPromise = (async () => {
+    const products = await fetchAllActiveProducts();
+    catalogCache.products = products;
+    catalogCache.loadedAt = Date.now();
+  })();
+
+  try {
+    await catalogCache.loadingPromise;
+  } finally {
+    catalogCache.loadingPromise = null;
+  }
+
+  return catalogCache.products;
 }
 
 function extractHandlesFromSearchHtml(html) {
@@ -280,28 +383,99 @@ async function searchProductsViaStorefront(query) {
     .map((item) => item.product);
 }
 
-// Busca produtos por título/query
-async function searchProducts(query) {
-  const data = await shopifyGet('/products.json?limit=250&status=active');
-  const products = Array.isArray(data.products) ? data.products : [];
+function detectSearchConfidence(query, ranked) {
+  if (!ranked || ranked.length === 0) {
+    return {
+      confidence: 'low',
+      needs_clarification: true,
+      clarification_hint: 'Nao encontrei correspondencia clara. Pergunte marca, tamanho ou linha do produto.',
+    };
+  }
 
-  const ranked = products
-    .map((p) => ({ product: p, score: productSearchScore(p, query) }))
+  const topScore = ranked[0].score;
+  const secondScore = ranked[1] ? ranked[1].score : 0;
+  const tokens = queryTokens(query);
+  const topText = productMetadataText(ranked[0].product);
+  const coveredTokens = tokens.filter((t) => topText.includes(t)).length;
+  const coverage = tokens.length > 0 ? coveredTokens / tokens.length : 1;
+
+  if (topScore >= 24 && coverage >= 0.75 && topScore >= secondScore + 6) {
+    return {
+      confidence: 'high',
+      needs_clarification: false,
+      clarification_hint: null,
+    };
+  }
+
+  if (topScore >= 14 && coverage >= 0.5) {
+    return {
+      confidence: 'medium',
+      needs_clarification: false,
+      clarification_hint: 'Se o cliente demonstrar duvida, confirme marca, capacidade ou cor antes de concluir.',
+    };
+  }
+
+  return {
+    confidence: 'low',
+    needs_clarification: true,
+    clarification_hint: 'Correspondencia ambigua. Pergunte mais um detalhe objetivo antes de recomendar.',
+  };
+}
+
+async function searchProductsSmart(query) {
+  const products = await ensureCatalog();
+
+  const rankedAdmin = products
+    .map((p) => ({ product: p, score: productSearchScore(p, query), source: 'admin_catalog' }))
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map((item) => item.product);
+    .slice(0, 8);
 
-  // Fallback: quando não houver resultado ou a confiança estiver baixa,
-  // usa a busca pública da loja (ex: /search?q=garrafa+pacco).
-  if (ranked.length === 0 || (query && query.trim().split(/\s+/).length > 1 && ranked.length < 2)) {
-    const storefrontFallback = await searchProductsViaStorefront(query);
-    if (storefrontFallback.length > 0) {
-      return storefrontFallback;
+  let ranked = rankedAdmin;
+  const lowCoverage = rankedAdmin.length < 2;
+
+  if (rankedAdmin.length === 0 || lowCoverage) {
+    const storefront = await searchProductsViaStorefront(query);
+    const rankedStorefront = storefront
+      .map((p) => ({ product: p, score: productSearchScore(p, query), source: 'storefront_search' }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8);
+
+    if (rankedStorefront.length > 0) {
+      const merged = [...rankedAdmin, ...rankedStorefront];
+      const byId = new Map();
+      for (const item of merged) {
+        if (!item.product || !item.product.id) continue;
+        const prev = byId.get(item.product.id);
+        if (!prev || item.score > prev.score) {
+          byId.set(item.product.id, item);
+        }
+      }
+      ranked = Array.from(byId.values())
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 8);
     }
   }
 
-  return ranked;
+  const confidenceData = detectSearchConfidence(query, ranked);
+
+  return {
+    products: ranked.slice(0, 5).map((r) => r.product),
+    confidence: confidenceData.confidence,
+    needs_clarification: confidenceData.needs_clarification,
+    clarification_hint: confidenceData.clarification_hint,
+    strategies: ranked.some((r) => r.source === 'storefront_search')
+      ? ['admin_catalog', 'storefront_search']
+      : ['admin_catalog'],
+    catalog_size: products.length,
+  };
+}
+
+// Busca produtos por título/query
+async function searchProducts(query) {
+  const result = await searchProductsSmart(query);
+  return result.products;
 }
 
 // Busca produto por ID com variantes e estoque
@@ -497,6 +671,7 @@ loadPersistedTokens();
 
 module.exports = {
   searchProducts,
+  searchProductsSmart,
   getProductById,
   getProductStock,
   getComplementaryProducts,

@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-5.4-nano';
 
 // Definição das ferramentas disponíveis para o agente
 const tools = [
@@ -250,6 +251,7 @@ ${complementarNote}
 
 - Sempre busque dados em tempo real via ferramentas antes de responder sobre produtos
 - Em dúvidas de nome/modelo, pesquise por termos-chave principais do cliente (ex: "garrafa", "pacco") para ampliar a chance de encontrar o item correto
+- Se a ferramenta de busca retornar baixa confiança (ex: confidence = "low" ou needs_clarification = true), NAO conclua recomendacao imediatamente; faca 1 pergunta objetiva para desambiguar
 - Produto não encontrado: "Não encontrei esse item no catálogo atual. Posso buscar algo similar?"
 - Estoque zerado: informe claramente e ofereça alternativa ou aviso de reposição
 - **Pedido:** SEMPRE solicite número do pedido E CPF — jamais forneça dados sem validação
@@ -303,7 +305,7 @@ async function processMessage(messages) {
   ];
 
   let response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: OPENAI_MODEL,
     messages: chatMessages,
     tools,
     tool_choice: 'auto',
@@ -332,7 +334,7 @@ async function processMessage(messages) {
 
     // Nova chamada ao modelo com resultados das ferramentas
     response = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: OPENAI_MODEL,
       messages: chatMessages,
       tools,
       tool_choice: 'auto',
