@@ -1,9 +1,30 @@
 const shopify = require('../shopify');
 
+function tokenizeQuery(query) {
+  return String(query || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
+function looksSpecificQuery(query) {
+  const q = String(query || '').toLowerCase();
+  return /\d+\s?(ml|l)\b|\b(vyta|hydra|freestyle|flip|tumbler|modelo)\b|\b(500|650|750|950|1180)\b/.test(q);
+}
+
 async function handleSearchProducts({ query }) {
   try {
     const search = await shopify.searchProductsSmart(query);
     const products = search.products || [];
+    const matchedCount = products.length;
+    const tokens = tokenizeQuery(query);
+    const broadIntent = matchedCount >= 3 && !looksSpecificQuery(query) && tokens.length <= 4;
+
+    // Quando a busca está ampla (ex: "garrafa pacco"), orientamos o agente a
+    // perguntar preferências antes de listar vários itens para o cliente.
+    const shouldClarify = Boolean(search.needs_clarification) || broadIntent;
 
     if (!products || products.length === 0) {
       return {
@@ -39,10 +60,19 @@ async function handleSearchProducts({ query }) {
 
     return {
       found: true,
-      products: results,
+      products: shouldClarify ? [] : results,
+      preview_products: shouldClarify ? results.slice(0, 2) : [],
+      matched_count: matchedCount,
       confidence: search.confidence || 'medium',
-      needs_clarification: Boolean(search.needs_clarification),
-      clarification_hint: search.clarification_hint || null,
+      needs_clarification: shouldClarify,
+      clarification_hint:
+        shouldClarify
+          ? 'Busca ampla. Confirme modelo (Hydra ou Vyta), tamanho (ex: 500ml, 650ml) ou cor antes de recomendar.'
+          : search.clarification_hint || null,
+      suggested_question:
+        shouldClarify
+          ? 'Tem sim. Voce prefere a linha Hydra ou Vyta? E qual tamanho voce procura?'
+          : null,
       strategies: search.strategies || ['admin_catalog'],
       catalog_size: search.catalog_size || 0,
     };
