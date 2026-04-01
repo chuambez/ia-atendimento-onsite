@@ -262,6 +262,8 @@ ${complementarNote}
 - **Pedido:** SEMPRE solicite número do pedido E CPF — jamais forneça dados sem validação
 - **Compatibilidade:** use SEMPRE a ferramenta \`find_compatible_products\` (usa Search & Discovery como fonte oficial)
 - **Compatibilidade:** priorize linha/modelo e capacidade (ex: Vyta 650ml). Nao pergunte tipo/modelo de tampa, exceto se o proprio cliente trouxer esse criterio.
+- **Taxonomia de marca/linha:** Hydra e Vyta pertencem a PACCO. Para OWALA, nao pergunte "Hydra ou Vyta".
+- **OWALA:** evite perguntar "qual modelo" por padrao; priorize capacidade e cor quando precisar clarificar.
 
 ---
 

@@ -1,4 +1,15 @@
 const shopify = require('../shopify');
+const storeConfig = require('../../store-config.json');
+
+const defaultBrandKnowledge = {
+  brand_lines: {
+    pacco: ['hydra', 'vyta'],
+    owala: ['freesip', 'freesip twist'],
+  },
+  avoid_model_question_for: ['owala'],
+};
+
+const brandKnowledge = storeConfig.brand_knowledge || defaultBrandKnowledge;
 
 function tokenizeQuery(query) {
   return String(query || '')
@@ -14,6 +25,66 @@ function looksSpecificQuery(query) {
   return /\d+\s?(ml|l)\b|\b(vyta|hydra|freestyle|flip|tumbler|modelo)\b|\b(500|650|750|950|1180)\b/.test(q);
 }
 
+function detectBrand(query, products) {
+  const q = String(query || '').toLowerCase();
+
+  if (q.includes('owala')) return 'owala';
+  if (q.includes('pacco')) return 'pacco';
+
+  const text = (products || [])
+    .slice(0, 3)
+    .map((p) => String((p && p.title) || '').toLowerCase())
+    .join(' ');
+
+  if (text.includes('owala')) return 'owala';
+  if (text.includes('pacco')) return 'pacco';
+
+  return null;
+}
+
+function queryHasCapacity(query) {
+  return /\b\d{2,4}\s?(ml|l|oz)\b/i.test(String(query || ''));
+}
+
+function hasBrandLineMention(query, brand) {
+  const lines = (brandKnowledge.brand_lines && brandKnowledge.brand_lines[brand]) || [];
+  const q = String(query || '').toLowerCase();
+  return lines.some((line) => q.includes(String(line).toLowerCase()));
+}
+
+function buildClarificationQuestion(query, products) {
+  const brand = detectBrand(query, products);
+  const hasCapacity = queryHasCapacity(query);
+  const avoidModelBrands = Array.isArray(brandKnowledge.avoid_model_question_for)
+    ? brandKnowledge.avoid_model_question_for.map((b) => String(b).toLowerCase())
+    : [];
+
+  if (brand === 'owala') {
+    if (hasCapacity) {
+      return 'Tem sim. Você prefere alguma cor específica?';
+    }
+    return 'Tem sim. Você prefere qual capacidade (ex: 710ml ou 946ml)?';
+  }
+
+  if (brand === 'pacco') {
+    if (!hasBrandLineMention(query, 'pacco')) {
+      return 'Tem sim. Você procura a linha Hydra ou Vyta?';
+    }
+    if (!hasCapacity) {
+      return 'Perfeito. Qual capacidade você prefere (ex: 500ml, 650ml ou 950ml)?';
+    }
+    return 'Perfeito. Você prefere alguma cor específica?';
+  }
+
+  if (brand && avoidModelBrands.includes(brand)) {
+    return hasCapacity
+      ? 'Perfeito. Você prefere alguma cor específica?'
+      : 'Perfeito. Qual capacidade você prefere?';
+  }
+
+  return 'Tem sim. Você prefere alguma cor ou capacidade específica?';
+}
+
 async function handleSearchProducts({ query }) {
   try {
     const search = await shopify.searchProductsSmart(query);
@@ -25,6 +96,7 @@ async function handleSearchProducts({ query }) {
     // Quando a busca está ampla (ex: "garrafa pacco"), orientamos o agente a
     // perguntar preferências antes de listar vários itens para o cliente.
     const shouldClarify = Boolean(search.needs_clarification) || broadIntent;
+    const clarificationQuestion = buildClarificationQuestion(query, products);
 
     if (!products || products.length === 0) {
       return {
@@ -68,11 +140,11 @@ async function handleSearchProducts({ query }) {
       needs_clarification: shouldClarify,
       clarification_hint:
         shouldClarify
-          ? 'Busca ampla. Confirme primeiro o modelo/linha; depois pergunte tamanho se precisar.'
+          ? 'Busca ampla. Faça apenas 1 pergunta objetiva alinhada a marca e capacidade.'
           : search.clarification_hint || null,
       suggested_question:
         shouldClarify
-          ? 'Tem sim. Você prefere a linha Hydra ou Vyta?'
+          ? clarificationQuestion
           : null,
       strategies: search.strategies || ['admin_catalog'],
       catalog_size: search.catalog_size || 0,

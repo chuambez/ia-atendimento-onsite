@@ -39,6 +39,19 @@
     "installments": "Parcelamento em até 6x sem juros ou até 12x com juros"
   },
 
+  "brand_knowledge": {
+    "brand_lines": {
+      "pacco": ["hydra", "vyta"],
+      "owala": ["freesip", "freesip twist"]
+    },
+    "avoid_model_question_for": ["owala"],
+    "compatibility_rules": {
+      "default": "priorizar linha e capacidade",
+      "owala": "nao perguntar modelo por padrao; priorizar capacidade e cor",
+      "pacco": "pode perguntar linha (hydra/vyta) quando nao informada"
+    }
+  },
+
   "faq": [
     {
       "question": "Quanto tempo leva para meu pedido chegar?",
