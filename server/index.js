@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { processMessage } = require('./agent');
+const { writeConversationLog, LOG_FILE } = require('./conversation-logger');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,10 +60,20 @@ app.post('/api/chat', async (req, res) => {
 
   const messages = getSession(sessionId);
   messages.push({ role: 'user', content: message.trim() });
+  writeConversationLog('user_message', {
+    source: 'widget',
+    sessionId,
+    message: message.trim(),
+  });
 
   try {
     const reply = await processMessage(messages);
     messages.push({ role: 'assistant', content: reply });
+    writeConversationLog('assistant_reply', {
+      source: 'widget',
+      sessionId,
+      reply,
+    });
 
     // Limita histórico a 20 mensagens para não explodir tokens
     if (messages.length > 20) {
@@ -72,6 +83,11 @@ app.post('/api/chat', async (req, res) => {
     return res.json({ reply });
   } catch (err) {
     console.error('[CHAT ERROR]', err.message);
+    writeConversationLog('chat_error', {
+      source: 'widget',
+      sessionId,
+      error: err.message,
+    });
     return res.status(500).json({
       error: 'Erro interno. Tente novamente em instantes.',
     });
@@ -123,10 +139,20 @@ app.post('/api/admin/sessions/:sessionId/reply-ai', async (req, res) => {
 
   const messages = getSession(sessionId);
   messages.push({ role: 'user', content: message.trim() });
+  writeConversationLog('user_message', {
+    source: 'dashboard_ai_reply',
+    sessionId,
+    message: message.trim(),
+  });
 
   try {
     const reply = await processMessage(messages);
     messages.push({ role: 'assistant', content: reply });
+    writeConversationLog('assistant_reply', {
+      source: 'dashboard_ai_reply',
+      sessionId,
+      reply,
+    });
 
     if (messages.length > 20) {
       messages.splice(0, messages.length - 20);
@@ -135,6 +161,11 @@ app.post('/api/admin/sessions/:sessionId/reply-ai', async (req, res) => {
     return res.json({ reply });
   } catch (err) {
     console.error('[ADMIN REPLY ERROR]', err.message);
+    writeConversationLog('chat_error', {
+      source: 'dashboard_ai_reply',
+      sessionId,
+      error: err.message,
+    });
     return res.status(500).json({ error: 'Erro interno ao gerar resposta.' });
   }
 });
@@ -151,6 +182,12 @@ app.post('/api/admin/sessions/:sessionId/manual-message', (req, res) => {
   const safeRole = role === 'user' ? 'user' : 'assistant';
   const messages = getSession(sessionId);
   messages.push({ role: safeRole, content: message.trim() });
+  writeConversationLog('manual_message', {
+    source: 'dashboard_manual',
+    sessionId,
+    role: safeRole,
+    message: message.trim(),
+  });
 
   if (messages.length > 20) {
     messages.splice(0, messages.length - 20);
@@ -182,6 +219,7 @@ if (require.main === module) {
   app.listen(PORT, () => {
     console.log(`✅ Servidor rodando em http://localhost:${PORT}`);
     console.log(`   Loja: ${process.env.SHOPIFY_STORE}`);
+    console.log(`   Logs: ${LOG_FILE}`);
   });
 }
 

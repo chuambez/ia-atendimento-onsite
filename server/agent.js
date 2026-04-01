@@ -8,6 +8,7 @@ const {
 } = require('./tools/products');
 const { handleGetOrderStatus } = require('./tools/orders');
 const { handleGetStoreInfo } = require('./tools/store-info');
+const { writeConversationLog } = require('./conversation-logger');
 const fs = require('fs');
 const path = require('path');
 
@@ -299,6 +300,11 @@ Toda conversa termina com clareza. Se houve venda: confirme o próximo passo. Se
 
 // Processa mensagem com histórico de conversa
 async function processMessage(messages) {
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
+  const sessionHint = lastUserMessage && typeof lastUserMessage.content === 'string'
+    ? lastUserMessage.content.slice(0, 80)
+    : '';
+
   const systemPrompt = buildSystemPrompt(messages);
 
   const chatMessages = [
@@ -319,11 +325,30 @@ async function processMessage(messages) {
     const assistantMessage = response.choices[0].message;
     chatMessages.push(assistantMessage);
 
+    writeConversationLog('tool_calls_requested', {
+      source: 'agent',
+      session_hint: sessionHint,
+      tool_calls: assistantMessage.tool_calls.map((tc) => ({
+        id: tc.id,
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+      })),
+    });
+
     // Executa todas as ferramentas solicitadas
     const toolResults = await Promise.all(
       assistantMessage.tool_calls.map(async (tc) => {
         const args = safeParseArgs(tc.function.arguments);
         const result = await executeTool(tc.function.name, args);
+
+        writeConversationLog('tool_call_result', {
+          source: 'agent',
+          session_hint: sessionHint,
+          tool_name: tc.function.name,
+          args,
+          result,
+        });
+
         return {
           role: 'tool',
           tool_call_id: tc.id,
