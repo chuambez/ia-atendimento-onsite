@@ -333,7 +333,7 @@ function compactConversation(messages, limit = 12) {
     }));
 }
 
-function normalizePlannedTools(requiredTools, lastUserText) {
+function normalizePlannedTools(requiredTools, lastUserText, planner = {}) {
   const allowedTools = new Set(tools.map((t) => t.function.name));
   const list = Array.isArray(requiredTools) ? requiredTools : [];
   const normalized = [];
@@ -352,6 +352,18 @@ function normalizePlannedTools(requiredTools, lastUserText) {
 
     normalized.push({ name, args });
     if (normalized.length >= 3) break;
+  }
+
+  if (normalized.length === 0) {
+    const intent = String(planner.intencao || planner.intent || '').toLowerCase();
+    const terms = Array.isArray(planner.termos) ? planner.termos.filter(Boolean) : [];
+    const fallbackQuery = terms.length > 0 ? terms.join(' ') : (lastUserText || '');
+
+    if (intent === 'busca_produto' || intent === 'product_search') {
+      normalized.push({ name: 'search_products', args: { query: fallbackQuery } });
+    } else if (intent === 'compatibilidade' || intent === 'compatibility') {
+      normalized.push({ name: 'find_compatible_products', args: { query: fallbackQuery } });
+    }
   }
 
   return normalized;
@@ -447,7 +459,7 @@ async function processMessage(messages) {
     const conversation = compactConversation(messages, 14);
 
     const plannerRaw = await callReasoningAgent(
-      `Voce e o Agente Planejador de Atendimento.\n\nRetorne SOMENTE JSON com este formato:\n{\n  "intent": "product_search|compatibility|order_status|store_info|other",\n  "required_tools": [{"name":"search_products","args":{"query":"..."}}],\n  "need_clarification": true|false,\n  "clarification_question": "texto curto",\n  "notes": "resumo interno"\n}\n\nRegras:\n- Nao responda ao cliente.\n- Defina ferramentas necessarias para responder com alta confianca.\n- Em duvida de produto, inclua search_products com termos principais.\n- Para compatibilidade, priorize find_compatible_products.`,
+      `Voce e o AGENTE 1 (ATENDENTE ORQUESTRADOR).\n\nRetorne SOMENTE JSON com este formato:\n{\n  "intencao": "busca_produto|status_pedido|dados_cliente|compatibilidade|other",\n  "contexto": "resumo em 1 frase",\n  "termos": ["palavra1","palavra2"],\n  "filtros": {"marca":null,"categoria":null,"cor":null,"tamanho":null,"faixa_preco":null,"sku":null},\n  "cliente_id": null,\n  "pedido_id": null,\n  "required_tools": [{"name":"search_products","args":{"query":"..."}}],\n  "need_clarification": true|false,\n  "clarification_question": "texto curto",\n  "notes": "resumo interno"\n}\n\nRegras:\n- Nao responda ao cliente final.\n- Nao invente termos: use primeiro o que o cliente realmente escreveu.\n- Sempre planeje Buscador -> Analisador antes da resposta final quando for dado de produto/pedido.\n- Em duvida de produto, inclua search_products com termos-chave.\n- Para compatibilidade, priorize find_compatible_products.`,
       JSON.stringify({
         system_prompt: systemPrompt,
         conversation,
@@ -456,14 +468,26 @@ async function processMessage(messages) {
     );
 
     const planner = safeParseJson(plannerRaw, {
-      intent: 'other',
+      intencao: 'other',
+      contexto: '',
+      termos: [],
+      filtros: {
+        marca: null,
+        categoria: null,
+        cor: null,
+        tamanho: null,
+        faixa_preco: null,
+        sku: null,
+      },
+      cliente_id: null,
+      pedido_id: null,
       required_tools: [],
       need_clarification: false,
       clarification_question: '',
       notes: '',
     });
 
-    const plannedTools = normalizePlannedTools(planner.required_tools, lastUserText);
+    const plannedTools = normalizePlannedTools(planner.required_tools, lastUserText, planner);
 
     writeConversationLog('multi_agent_planner', {
       source: 'multi_agent',
@@ -491,7 +515,7 @@ async function processMessage(messages) {
     }
 
     const dataAgentRaw = await callReasoningAgent(
-      `Voce e o Agente de Dados de Produto.\n\nAnalise resultados de ferramenta e retorne SOMENTE JSON:\n{\n  "confidence": "high|medium|low",\n  "has_answer": true|false,\n  "facts": ["..."],\n  "recommended_products": [{"title":"","price":"","url":"","image":"","in_stock":true}],\n  "should_ask_clarification": true|false,\n  "clarification_question": "texto"\n}\n\nRegras:\n- Maximo 2 produtos em recommended_products.\n- Se resultado ambiguo, marque should_ask_clarification = true.`,
+      `Voce e o AGENTE 3 (ANALISADOR).\n\nAnalise dados brutos do Buscador e retorne SOMENTE JSON:\n{\n  "status": "ok|sem_resultado|dado_indisponivel|escalar",\n  "confidence": "high|medium|low",\n  "conteudo": {\n    "produtos": [{"titulo":"","marca":"","url":"","preco_min":"","preco_max":"","em_estoque":true,"variantes_disponiveis":[],"variantes_sem_estoque":[],"atributos":{"cores":[],"tamanhos":[],"material":"","capacidade":"","dimensoes":""},"diferenciais":[],"compatibilidade":"","resumo_ficha_tecnica":"","relevancia":"alta|media"}],\n    "pedido": null,\n    "cliente": null\n  },\n  "facts": ["..."],\n  "recommended_products": [{"title":"","price":"","url":"","image":"","in_stock":true}],\n  "should_ask_clarification": true|false,\n  "clarification_question": "texto",\n  "alertas": ["..."]\n}\n\nRegras:\n- Maximo 2 produtos em recommended_products.\n- Se resultado ambiguo, marque should_ask_clarification = true.\n- Se detectar erro de permissao/scope da API, use status = "dado_indisponivel" e coloque alerta explicando o scope faltante.\n- Nunca assuma que um scope existe.`,
       JSON.stringify({
         planner,
         tool_results: toolResults,
@@ -501,12 +525,19 @@ async function processMessage(messages) {
     );
 
     const dataAgent = safeParseJson(dataAgentRaw, {
+      status: 'sem_resultado',
       confidence: 'low',
       has_answer: false,
+      conteudo: {
+        produtos: [],
+        pedido: null,
+        cliente: null,
+      },
       facts: [],
       recommended_products: [],
       should_ask_clarification: false,
       clarification_question: '',
+      alertas: [],
     });
 
     writeConversationLog('multi_agent_data', {
@@ -538,7 +569,7 @@ async function processMessage(messages) {
     });
 
     const finalResponderRaw = await callReasoningAgent(
-      `${systemPrompt}\n\nVoce e o Agente de Resposta Final ao Cliente.\nUse os dados dos outros agentes para responder de forma natural e objetiva.\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca apenas 1 pergunta curta e objetiva.\n- Nao repita a mesma pergunta no inicio e no fim da resposta.\n- Se recomendar produtos, maximo 2 opcoes.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
+      `${systemPrompt}\n\nVoce e o AGENTE 1 (ATENDENTE), unico que fala com o cliente.\nUse os dados do AGENTE 2 (BUSCADOR) e AGENTE 3 (ANALISADOR).\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca apenas 1 pergunta curta e objetiva.\n- Nao repita a mesma pergunta no inicio e no fim da resposta.\n- Se recomendar produtos, maximo 2 opcoes.\n- Se data_agent.status = "dado_indisponivel" por permissao da API, diga exatamente: "Esse dado requer uma permissão adicional que não está ativa no momento."\n- Se houve venda, confirme proximo passo com link do produto/carrinho.\n- Se nao houve conversao, mantenha a porta aberta sem pressao.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
       JSON.stringify({
         planner,
         data_agent: dataAgent,
@@ -553,7 +584,7 @@ async function processMessage(messages) {
       writeConversationLog('multi_agent_final', {
         source: 'multi_agent',
         session_hint: sessionHint,
-        planner_intent: planner.intent,
+        planner_intent: planner.intencao || planner.intent,
         tools_used: plannedTools.map((t) => t.name),
       });
       return finalResponderRaw.trim();
