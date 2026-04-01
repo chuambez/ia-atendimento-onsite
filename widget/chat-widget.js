@@ -34,20 +34,57 @@
   const AGENT_API = `${AGENT_BASE_URL}/api/chat`;
   const AGENT_NAME = 'Assistente';
   const AGENT_GREETING = 'Olá! 👋 Posso te ajudar a encontrar produtos, tirar dúvidas ou rastrear seu pedido. Como posso ajudar?';
+  const STORAGE_KEY_SESSION = 'agent_session';
+  const STORAGE_KEY_HISTORY = 'agent_chat_history';
 
   // Gera sessionId único por visita
   function getSessionId() {
-    let sid = sessionStorage.getItem('agent_session');
+    let sid = null;
+
+    try {
+      sid = localStorage.getItem(STORAGE_KEY_SESSION) || sessionStorage.getItem(STORAGE_KEY_SESSION);
+    } catch {
+      sid = sessionStorage.getItem(STORAGE_KEY_SESSION);
+    }
+
     if (!sid) {
       sid = 'sess_' + Math.random().toString(36).slice(2) + Date.now();
-      sessionStorage.setItem('agent_session', sid);
+      try {
+        localStorage.setItem(STORAGE_KEY_SESSION, sid);
+      } catch {
+        // ignora falha de storage
+      }
+      sessionStorage.setItem(STORAGE_KEY_SESSION, sid);
     }
     return sid;
+  }
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_HISTORY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string')
+        .slice(-80);
+    } catch {
+      return [];
+    }
+  }
+
+  function saveHistory(history) {
+    try {
+      localStorage.setItem(STORAGE_KEY_HISTORY, JSON.stringify(history.slice(-80)));
+    } catch {
+      // ignora falha de storage
+    }
   }
 
   const SESSION_ID = getSessionId();
   let isOpen = false;
   let isTyping = false;
+  const chatHistory = loadHistory();
 
   // Injeta estilos
   const style = document.createElement('link');
@@ -187,7 +224,7 @@
       .replace(/\n/g, '<br>');
   }
 
-  function addMessage(role, text) {
+  function addMessage(role, text, opts = {}) {
     const wrapper = document.createElement('div');
     wrapper.className = `ai-msg ai-msg-${role}`;
 
@@ -198,6 +235,11 @@
     wrapper.appendChild(bubble);
     messages.appendChild(wrapper);
     messages.scrollTop = messages.scrollHeight;
+
+    if (opts.persist !== false && (role === 'user' || role === 'assistant')) {
+      chatHistory.push({ role, text: String(text || '') });
+      saveHistory(chatHistory);
+    }
   }
 
   function showTyping() {
@@ -271,6 +313,11 @@
   });
 
   // Mostra badge se chat fechado após 5s
+  if (chatHistory.length > 0) {
+    hasGreeted = true;
+    chatHistory.forEach((m) => addMessage(m.role, m.text, { persist: false }));
+  }
+
   setTimeout(() => {
     if (!isOpen && !hasGreeted) {
       badge.style.display = 'flex';

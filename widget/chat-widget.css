@@ -204,12 +204,12 @@
 .ai-bubble .ai-inline-image {
   display: block;
   width: 100%;
-  max-width: 150px;
-  max-height: 150px;
+  max-width: 110px;
+  max-height: 110px;
   object-fit: cover;
-  border-radius: 10px;
-  margin-top: 8px;
-  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-top: 6px;
+  border: 1px solid #eef1f5;
   background: #fff;
 }
 

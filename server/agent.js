@@ -261,6 +261,7 @@ ${complementarNote}
 - Estoque zerado: informe claramente e ofereça alternativa ou aviso de reposição
 - **Pedido:** SEMPRE solicite número do pedido E CPF — jamais forneça dados sem validação
 - **Compatibilidade:** use SEMPRE a ferramenta \`find_compatible_products\` (usa Search & Discovery como fonte oficial)
+- **Compatibilidade:** priorize linha/modelo e capacidade (ex: Vyta 650ml). Nao pergunte tipo/modelo de tampa, exceto se o proprio cliente trouxer esse criterio.
 
 ---
 
@@ -547,7 +548,7 @@ async function processMessage(messages) {
     });
 
     const viabilityRaw = await callReasoningAgent(
-      `Voce e o Agente de Viabilidade de Pergunta.\n\nRetorne SOMENTE JSON:\n{\n  "ask_clarification": true|false,\n  "question": "texto curto",\n  "reason": "breve"\n}\n\nRegras:\n- Se confidence for low ou should_ask_clarification=true, geralmente pergunte.\n- Pergunta deve ser objetiva e de uso real no atendimento.\n- Gere apenas UMA pergunta por vez (sem pergunta dupla).`,
+      `Voce e o Agente de Viabilidade de Pergunta.\n\nRetorne SOMENTE JSON:\n{\n  "ask_clarification": true|false,\n  "question": "texto curto",\n  "reason": "breve"\n}\n\nRegras:\n- Se confidence for low ou should_ask_clarification=true, geralmente pergunte.\n- Pergunta deve ser objetiva e de uso real no atendimento.\n- Gere apenas UMA pergunta por vez (sem pergunta dupla).\n- Para compatibilidade de produto, nao pergunte sobre tipo/modelo de tampa se linha e capacidade ja resolverem a decisao.`,
       JSON.stringify({
         planner,
         data_agent: dataAgent,
