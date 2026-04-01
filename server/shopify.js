@@ -440,7 +440,15 @@ function detectSearchConfidence(query, ranked) {
 }
 
 async function searchProductsSmart(query) {
-  const products = await ensureCatalog();
+  let products = [];
+  let adminCatalogError = null;
+
+  try {
+    products = await ensureCatalog();
+  } catch (err) {
+    adminCatalogError = err;
+    products = [];
+  }
 
   const rankedAdmin = products
     .map((p) => ({ product: p, score: productSearchScore(p, query), source: 'admin_catalog' }))
@@ -451,7 +459,7 @@ async function searchProductsSmart(query) {
   let ranked = rankedAdmin;
   const lowCoverage = rankedAdmin.length < 2;
 
-  if (rankedAdmin.length === 0 || lowCoverage) {
+  if (rankedAdmin.length === 0 || lowCoverage || adminCatalogError) {
     const storefront = await searchProductsViaStorefront(query);
     const rankedStorefront = storefront
       .map((p) => ({ product: p, score: productSearchScore(p, query), source: 'storefront_search' }))
@@ -483,9 +491,10 @@ async function searchProductsSmart(query) {
     needs_clarification: confidenceData.needs_clarification,
     clarification_hint: confidenceData.clarification_hint,
     strategies: ranked.some((r) => r.source === 'storefront_search')
-      ? ['admin_catalog', 'storefront_search']
+      ? (adminCatalogError ? ['storefront_search'] : ['admin_catalog', 'storefront_search'])
       : ['admin_catalog'],
     catalog_size: products.length,
+    admin_catalog_error: adminCatalogError ? adminCatalogError.message : null,
   };
 }
 

@@ -36,6 +36,7 @@ async function handleSearchProducts({ query }) {
         message: 'Nenhum produto encontrado para essa busca.',
         strategies: search.strategies || ['admin_catalog'],
         catalog_size: search.catalog_size || 0,
+        admin_catalog_error: search.admin_catalog_error || null,
       };
     }
 
@@ -75,6 +76,7 @@ async function handleSearchProducts({ query }) {
           : null,
       strategies: search.strategies || ['admin_catalog'],
       catalog_size: search.catalog_size || 0,
+      admin_catalog_error: search.admin_catalog_error || null,
     };
   } catch (err) {
     return {
