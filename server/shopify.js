@@ -3,11 +3,28 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const STORE = process.env.SHOPIFY_STORE;
-const STATIC_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN;
-const CLIENT_ID = process.env.SHOPIFY_CLIENT_ID;
-const CLIENT_SECRET = process.env.SHOPIFY_CLIENT_SECRET;
-const REFRESH_TOKEN = process.env.SHOPIFY_REFRESH_TOKEN;
+function cleanEnv(name) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null) return null;
+
+  const trimmed = String(raw).trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeStore(value) {
+  if (!value) return null;
+
+  return String(value)
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/\/+$/, '');
+}
+
+const STORE = normalizeStore(cleanEnv('SHOPIFY_STORE'));
+const STATIC_ACCESS_TOKEN = cleanEnv('SHOPIFY_ACCESS_TOKEN');
+const CLIENT_ID = cleanEnv('SHOPIFY_CLIENT_ID');
+const CLIENT_SECRET = cleanEnv('SHOPIFY_CLIENT_SECRET');
+const REFRESH_TOKEN = cleanEnv('SHOPIFY_REFRESH_TOKEN');
 const API_VERSION = '2024-04';
 const BASE_URL = STORE ? `https://${STORE}/admin/api/${API_VERSION}` : null;
 const STOREFRONT_BASE_URL = STORE ? `https://${STORE}` : null;
