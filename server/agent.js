@@ -298,15 +298,77 @@ Toda conversa termina com clareza. Se houve venda: confirme o próximo passo. Se
 "Foi um prazer te ajudar! Se precisar de mais alguma coisa, estarei por aqui. 😊"`;
 }
 
-// Processa mensagem com histórico de conversa
-async function processMessage(messages) {
-  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
-  const sessionHint = lastUserMessage && typeof lastUserMessage.content === 'string'
-    ? lastUserMessage.content.slice(0, 80)
-    : '';
+function safeParseJson(raw, fallback = {}) {
+  if (!raw || typeof raw !== 'string') return fallback;
 
-  const systemPrompt = buildSystemPrompt(messages);
+  try {
+    return JSON.parse(raw);
+  } catch {
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      try {
+        return JSON.parse(raw.slice(start, end + 1));
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
+  }
+}
 
+function normalizeRole(role) {
+  if (role === 'user' || role === 'assistant' || role === 'tool') return role;
+  return 'assistant';
+}
+
+function compactConversation(messages, limit = 12) {
+  return messages
+    .slice(-limit)
+    .map((m) => ({
+      role: normalizeRole(m.role),
+      content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content || {}),
+    }));
+}
+
+function normalizePlannedTools(requiredTools, lastUserText) {
+  const allowedTools = new Set(tools.map((t) => t.function.name));
+  const list = Array.isArray(requiredTools) ? requiredTools : [];
+  const normalized = [];
+
+  for (const item of list) {
+    const name = item && item.name;
+    if (!name || !allowedTools.has(name)) continue;
+
+    const args = item && typeof item.args === 'object' && item.args ? { ...item.args } : {};
+
+    if (name === 'search_products' || name === 'find_compatible_products') {
+      if (!args.query || typeof args.query !== 'string') {
+        args.query = lastUserText || '';
+      }
+    }
+
+    normalized.push({ name, args });
+    if (normalized.length >= 3) break;
+  }
+
+  return normalized;
+}
+
+async function callReasoningAgent(systemPrompt, payload, temperature = 0.2) {
+  const response = await openai.chat.completions.create({
+    model: OPENAI_MODEL,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: payload },
+    ],
+    temperature,
+  });
+
+  return response.choices[0].message.content || '{}';
+}
+
+async function processMessageSingleAgent(messages, systemPrompt, sessionHint) {
   const chatMessages = [
     { role: 'system', content: systemPrompt },
     ...messages,
@@ -320,13 +382,12 @@ async function processMessage(messages) {
     temperature: 0.7,
   });
 
-  // Loop de execução de ferramentas
   while (response.choices[0].finish_reason === 'tool_calls') {
     const assistantMessage = response.choices[0].message;
     chatMessages.push(assistantMessage);
 
     writeConversationLog('tool_calls_requested', {
-      source: 'agent',
+      source: 'single_agent_fallback',
       session_hint: sessionHint,
       tool_calls: assistantMessage.tool_calls.map((tc) => ({
         id: tc.id,
@@ -335,14 +396,13 @@ async function processMessage(messages) {
       })),
     });
 
-    // Executa todas as ferramentas solicitadas
     const toolResults = await Promise.all(
       assistantMessage.tool_calls.map(async (tc) => {
         const args = safeParseArgs(tc.function.arguments);
         const result = await executeTool(tc.function.name, args);
 
         writeConversationLog('tool_call_result', {
-          source: 'agent',
+          source: 'single_agent_fallback',
           session_hint: sessionHint,
           tool_name: tc.function.name,
           args,
@@ -359,7 +419,6 @@ async function processMessage(messages) {
 
     chatMessages.push(...toolResults);
 
-    // Nova chamada ao modelo com resultados das ferramentas
     response = await openai.chat.completions.create({
       model: OPENAI_MODEL,
       messages: chatMessages,
@@ -370,6 +429,142 @@ async function processMessage(messages) {
   }
 
   return response.choices[0].message.content;
+}
+
+// Processa mensagem com histórico de conversa
+async function processMessage(messages) {
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
+  const lastUserText = lastUserMessage && typeof lastUserMessage.content === 'string'
+    ? lastUserMessage.content
+    : '';
+  const sessionHint = lastUserText.slice(0, 80);
+
+  const systemPrompt = buildSystemPrompt(messages);
+
+  try {
+    const conversation = compactConversation(messages, 14);
+
+    const plannerRaw = await callReasoningAgent(
+      `Voce e o Agente Planejador de Atendimento.\n\nRetorne SOMENTE JSON com este formato:\n{\n  "intent": "product_search|compatibility|order_status|store_info|other",\n  "required_tools": [{"name":"search_products","args":{"query":"..."}}],\n  "need_clarification": true|false,\n  "clarification_question": "texto curto",\n  "notes": "resumo interno"\n}\n\nRegras:\n- Nao responda ao cliente.\n- Defina ferramentas necessarias para responder com alta confianca.\n- Em duvida de produto, inclua search_products com termos principais.\n- Para compatibilidade, priorize find_compatible_products.`,
+      JSON.stringify({
+        system_prompt: systemPrompt,
+        conversation,
+      }),
+      0.1
+    );
+
+    const planner = safeParseJson(plannerRaw, {
+      intent: 'other',
+      required_tools: [],
+      need_clarification: false,
+      clarification_question: '',
+      notes: '',
+    });
+
+    const plannedTools = normalizePlannedTools(planner.required_tools, lastUserText);
+
+    writeConversationLog('multi_agent_planner', {
+      source: 'multi_agent',
+      session_hint: sessionHint,
+      planner,
+      planned_tools: plannedTools,
+    });
+
+    const toolResults = [];
+    for (const toolPlan of plannedTools) {
+      const result = await executeTool(toolPlan.name, toolPlan.args);
+      toolResults.push({
+        name: toolPlan.name,
+        args: toolPlan.args,
+        result,
+      });
+
+      writeConversationLog('tool_call_result', {
+        source: 'multi_agent',
+        session_hint: sessionHint,
+        tool_name: toolPlan.name,
+        args: toolPlan.args,
+        result,
+      });
+    }
+
+    const dataAgentRaw = await callReasoningAgent(
+      `Voce e o Agente de Dados de Produto.\n\nAnalise resultados de ferramenta e retorne SOMENTE JSON:\n{\n  "confidence": "high|medium|low",\n  "has_answer": true|false,\n  "facts": ["..."],\n  "recommended_products": [{"title":"","price":"","url":"","image":"","in_stock":true}],\n  "should_ask_clarification": true|false,\n  "clarification_question": "texto"\n}\n\nRegras:\n- Maximo 2 produtos em recommended_products.\n- Se resultado ambiguo, marque should_ask_clarification = true.`,
+      JSON.stringify({
+        planner,
+        tool_results: toolResults,
+        last_user_message: lastUserText,
+      }),
+      0.1
+    );
+
+    const dataAgent = safeParseJson(dataAgentRaw, {
+      confidence: 'low',
+      has_answer: false,
+      facts: [],
+      recommended_products: [],
+      should_ask_clarification: false,
+      clarification_question: '',
+    });
+
+    writeConversationLog('multi_agent_data', {
+      source: 'multi_agent',
+      session_hint: sessionHint,
+      data_agent: dataAgent,
+    });
+
+    const viabilityRaw = await callReasoningAgent(
+      `Voce e o Agente de Viabilidade de Pergunta.\n\nRetorne SOMENTE JSON:\n{\n  "ask_clarification": true|false,\n  "question": "texto curto",\n  "reason": "breve"\n}\n\nRegras:\n- Se confidence for low ou should_ask_clarification=true, geralmente pergunte.\n- Pergunta deve ser objetiva e de uso real no atendimento.`,
+      JSON.stringify({
+        planner,
+        data_agent: dataAgent,
+        last_user_message: lastUserText,
+      }),
+      0.1
+    );
+
+    const viability = safeParseJson(viabilityRaw, {
+      ask_clarification: false,
+      question: '',
+      reason: '',
+    });
+
+    writeConversationLog('multi_agent_viability', {
+      source: 'multi_agent',
+      session_hint: sessionHint,
+      viability,
+    });
+
+    const finalResponderRaw = await callReasoningAgent(
+      `${systemPrompt}\n\nVoce e o Agente de Resposta Final ao Cliente.\nUse os dados dos outros agentes para responder de forma natural e objetiva.\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca uma pergunta curta e nao faça spam de produtos.\n- Se recomendar produtos, maximo 2 opcoes.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
+      JSON.stringify({
+        planner,
+        data_agent: dataAgent,
+        viability,
+        tool_results: toolResults,
+        conversation,
+      }),
+      0.5
+    );
+
+    if (finalResponderRaw && finalResponderRaw.trim()) {
+      writeConversationLog('multi_agent_final', {
+        source: 'multi_agent',
+        session_hint: sessionHint,
+        planner_intent: planner.intent,
+        tools_used: plannedTools.map((t) => t.name),
+      });
+      return finalResponderRaw.trim();
+    }
+  } catch (err) {
+    writeConversationLog('multi_agent_error', {
+      source: 'multi_agent',
+      session_hint: sessionHint,
+      error: err.message,
+    });
+  }
+
+  return processMessageSingleAgent(messages, systemPrompt, sessionHint);
 }
 
 module.exports = { processMessage };
