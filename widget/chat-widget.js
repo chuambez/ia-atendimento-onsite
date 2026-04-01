@@ -144,12 +144,46 @@
   minimize.addEventListener('click', closeChat);
 
   // Formata texto com markdown básico
+  function compactLinkLabel(url) {
+    try {
+      const parsed = new URL(url);
+      const path = parsed.pathname || '';
+
+      if (path.indexOf('/products/') === 0) {
+        return 'Ver produto';
+      }
+
+      return `${parsed.hostname.replace(/^www\./, '')}`;
+    } catch {
+      return 'Abrir link';
+    }
+  }
+
+  function compactBareUrls(text) {
+    return text.replace(/(^|\s)(https?:\/\/[^\s<]+)/g, (full, prefix, rawUrl) => {
+      let url = rawUrl;
+      let suffix = '';
+
+      const trailing = /[\).,!?:;]+$/;
+      const m = url.match(trailing);
+      if (m) {
+        suffix = m[0];
+        url = url.slice(0, -suffix.length);
+      }
+
+      const label = compactLinkLabel(url);
+      return `${prefix}<a class="ai-compact-link" href="${url}" target="_blank" rel="noopener">${label}</a>${suffix}`;
+    });
+  }
+
   function formatText(text) {
-    return text
+    const withCompactBareUrls = compactBareUrls(String(text || ''));
+
+    return withCompactBareUrls
       .replace(/!\[([^\]]*)\]\((https?:\/\/[^\)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" class="ai-inline-image" />')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, '<a class="ai-compact-link" href="$2" target="_blank" rel="noopener">$1</a>')
       .replace(/\n/g, '<br>');
   }
 

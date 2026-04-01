@@ -68,11 +68,11 @@ async function handleSearchProducts({ query }) {
       needs_clarification: shouldClarify,
       clarification_hint:
         shouldClarify
-          ? 'Busca ampla. Confirme modelo (Hydra ou Vyta), tamanho (ex: 500ml, 650ml) ou cor antes de recomendar.'
+          ? 'Busca ampla. Confirme primeiro o modelo/linha; depois pergunte tamanho se precisar.'
           : search.clarification_hint || null,
       suggested_question:
         shouldClarify
-          ? 'Tem sim. Voce prefere a linha Hydra ou Vyta? E qual tamanho voce procura?'
+          ? 'Tem sim. Você prefere a linha Hydra ou Vyta?'
           : null,
       strategies: search.strategies || ['admin_catalog'],
       catalog_size: search.catalog_size || 0,

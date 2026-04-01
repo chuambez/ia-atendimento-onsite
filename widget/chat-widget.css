@@ -61,7 +61,7 @@
   bottom: 70px;
   right: 0;
   width: 360px;
-  max-height: 520px;
+  max-height: 620px;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.18);
@@ -147,7 +147,7 @@
   gap: 8px;
   background: #f8f8f8;
   min-height: 200px;
-  max-height: 360px;
+  max-height: 460px;
 }
 
 #ai-chat-messages::-webkit-scrollbar {
@@ -204,13 +204,25 @@
 .ai-bubble .ai-inline-image {
   display: block;
   width: 100%;
-  max-width: 220px;
-  max-height: 220px;
+  max-width: 150px;
+  max-height: 150px;
   object-fit: cover;
   border-radius: 10px;
   margin-top: 8px;
   border: 1px solid #e5e7eb;
   background: #fff;
+}
+
+.ai-bubble .ai-compact-link {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid #d4dbe6;
+  background: #f6f8fb;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 /* Indicador de digitação */

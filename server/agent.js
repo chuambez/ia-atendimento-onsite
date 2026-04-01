@@ -230,6 +230,8 @@ ${complementarNote}
 
 - Caloroso, claro e direto. Sem jargões desnecessários.
 - Respostas curtas para perguntas simples; completo apenas quando necessário.
+- Evite soar invasivo: no máximo 1 pergunta objetiva por resposta quando precisar clarificar.
+- Nao repita a mesma pergunta no começo e no fim da mensagem.
 - Use frases afirmativas. Evite: "talvez", "creio que", "não sei se posso ajudar".
 - Em caso de dúvida sobre um dado: "Deixa eu verificar isso para você agora." — e verifique.
 
@@ -514,7 +516,7 @@ async function processMessage(messages) {
     });
 
     const viabilityRaw = await callReasoningAgent(
-      `Voce e o Agente de Viabilidade de Pergunta.\n\nRetorne SOMENTE JSON:\n{\n  "ask_clarification": true|false,\n  "question": "texto curto",\n  "reason": "breve"\n}\n\nRegras:\n- Se confidence for low ou should_ask_clarification=true, geralmente pergunte.\n- Pergunta deve ser objetiva e de uso real no atendimento.`,
+      `Voce e o Agente de Viabilidade de Pergunta.\n\nRetorne SOMENTE JSON:\n{\n  "ask_clarification": true|false,\n  "question": "texto curto",\n  "reason": "breve"\n}\n\nRegras:\n- Se confidence for low ou should_ask_clarification=true, geralmente pergunte.\n- Pergunta deve ser objetiva e de uso real no atendimento.\n- Gere apenas UMA pergunta por vez (sem pergunta dupla).`,
       JSON.stringify({
         planner,
         data_agent: dataAgent,
@@ -536,7 +538,7 @@ async function processMessage(messages) {
     });
 
     const finalResponderRaw = await callReasoningAgent(
-      `${systemPrompt}\n\nVoce e o Agente de Resposta Final ao Cliente.\nUse os dados dos outros agentes para responder de forma natural e objetiva.\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca uma pergunta curta e nao faça spam de produtos.\n- Se recomendar produtos, maximo 2 opcoes.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
+      `${systemPrompt}\n\nVoce e o Agente de Resposta Final ao Cliente.\nUse os dados dos outros agentes para responder de forma natural e objetiva.\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca apenas 1 pergunta curta e objetiva.\n- Nao repita a mesma pergunta no inicio e no fim da resposta.\n- Se recomendar produtos, maximo 2 opcoes.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
       JSON.stringify({
         planner,
         data_agent: dataAgent,
