@@ -1,7 +1,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOG_DIR = path.join(__dirname, '../logs');
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const LOG_DIR = IS_VERCEL ? '/tmp/ia-atendimento-logs' : path.join(__dirname, '../logs');
 const LOG_FILE = path.join(LOG_DIR, 'conversations.ndjson');
 
 function ensureLogDir() {
@@ -52,7 +53,11 @@ function writeConversationLog(event, payload = {}) {
       ...sanitize(payload),
     };
 
-    fs.appendFileSync(LOG_FILE, `${JSON.stringify(line)}\n`, 'utf-8');
+    const serialized = JSON.stringify(line);
+    fs.appendFileSync(LOG_FILE, `${serialized}\n`, 'utf-8');
+
+    // No ambiente serverless, logs em stdout ajudam no diagnóstico centralizado.
+    console.log(`[CONV_LOG] ${serialized}`);
   } catch {
     // Não interrompe o fluxo do chat por falha de logging.
   }
