@@ -46,6 +46,12 @@ function queryHasCapacity(query) {
   return /\b\d{2,4}\s?(ml|l|oz)\b/i.test(String(query || ''));
 }
 
+function queryAsksColor(query) {
+  return /\b(cor|cores|color|colorida|rosa|azul|preta|preto|verde|branca|branco|vermelha|vermelho)\b/i.test(
+    String(query || '')
+  );
+}
+
 function hasBrandLineMention(query, brand) {
   const lines = (brandKnowledge.brand_lines && brandKnowledge.brand_lines[brand]) || [];
   const q = String(query || '').toLowerCase();
@@ -55,13 +61,18 @@ function hasBrandLineMention(query, brand) {
 function buildClarificationQuestion(query, products) {
   const brand = detectBrand(query, products);
   const hasCapacity = queryHasCapacity(query);
+  const asksColor = queryAsksColor(query);
   const avoidModelBrands = Array.isArray(brandKnowledge.avoid_model_question_for)
     ? brandKnowledge.avoid_model_question_for.map((b) => String(b).toLowerCase())
     : [];
 
+  if (asksColor) {
+    return null;
+  }
+
   if (brand === 'owala') {
     if (hasCapacity) {
-      return 'Tem sim. Você prefere alguma cor específica?';
+      return null;
     }
     return 'Tem sim. Você prefere qual capacidade (ex: 710ml ou 946ml)?';
   }
@@ -73,16 +84,14 @@ function buildClarificationQuestion(query, products) {
     if (!hasCapacity) {
       return 'Perfeito. Qual capacidade você prefere (ex: 500ml, 650ml ou 950ml)?';
     }
-    return 'Perfeito. Você prefere alguma cor específica?';
+    return null;
   }
 
   if (brand && avoidModelBrands.includes(brand)) {
-    return hasCapacity
-      ? 'Perfeito. Você prefere alguma cor específica?'
-      : 'Perfeito. Qual capacidade você prefere?';
+    return hasCapacity ? null : 'Perfeito. Qual capacidade você prefere?';
   }
 
-  return 'Tem sim. Você prefere alguma cor ou capacidade específica?';
+  return hasCapacity ? null : 'Tem sim. Qual capacidade você prefere?';
 }
 
 async function handleSearchProducts({ query }) {
@@ -97,6 +106,7 @@ async function handleSearchProducts({ query }) {
     // perguntar preferências antes de listar vários itens para o cliente.
     const shouldClarify = Boolean(search.needs_clarification) || broadIntent;
     const clarificationQuestion = buildClarificationQuestion(query, products);
+    const colorIntent = queryAsksColor(query);
 
     if (!products || products.length === 0) {
       return {
@@ -143,9 +153,13 @@ async function handleSearchProducts({ query }) {
           ? 'Busca ampla. Faça apenas 1 pergunta objetiva alinhada a marca e capacidade.'
           : search.clarification_hint || null,
       suggested_question:
-        shouldClarify
+        shouldClarify && clarificationQuestion
           ? clarificationQuestion
           : null,
+      color_request_detected: colorIntent,
+      color_response_guidance: colorIntent
+        ? 'Se o cliente perguntar por cor, envie o link do produto (se ainda nao tiver sido enviado) e informe que as cores disponiveis aparecem ao abrir o link.'
+        : null,
       strategies: search.strategies || ['admin_catalog'],
       catalog_size: search.catalog_size || 0,
       admin_catalog_error: search.admin_catalog_error || null,

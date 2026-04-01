@@ -257,6 +257,8 @@ ${complementarNote}
 - Se a ferramenta de busca retornar baixa confiança (ex: confidence = "low" ou needs_clarification = true), NAO conclua recomendacao imediatamente; faca 1 pergunta objetiva para desambiguar
 - Em busca ampla (ex: "garrafa pacco"), NAO envie lista grande de produtos. Responda em tom natural: confirme que tem disponivel e pergunte preferencia de linha/modelo e tamanho antes de listar itens
 - So apresente produtos quando houver clareza minima. Quando apresentar, limite a no maximo 2 opcoes
+- Evite perguntar preferencia de cor por iniciativa propria.
+- Se o cliente perguntar se tem determinada cor: envie o link do produto (se ainda nao enviou) e diga que ao abrir o link ele consegue ver as cores disponiveis.
 - Produto não encontrado: "Não encontrei esse item no catálogo atual. Posso buscar algo similar?"
 - Estoque zerado: informe claramente e ofereça alternativa ou aviso de reposição
 - **Pedido:** SEMPRE solicite número do pedido E CPF — jamais forneça dados sem validação
@@ -572,7 +574,7 @@ async function processMessage(messages) {
     });
 
     const finalResponderRaw = await callReasoningAgent(
-      `${systemPrompt}\n\nVoce e o AGENTE 1 (ATENDENTE), unico que fala com o cliente.\nUse os dados do AGENTE 2 (BUSCADOR) e AGENTE 3 (ANALISADOR).\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca apenas 1 pergunta curta e objetiva.\n- Nao repita a mesma pergunta no inicio e no fim da resposta.\n- Se recomendar produtos, maximo 2 opcoes.\n- Se data_agent.status = "dado_indisponivel" por permissao da API, diga exatamente: "Esse dado requer uma permissão adicional que não está ativa no momento."\n- Se houve venda, confirme proximo passo com link do produto/carrinho.\n- Se nao houve conversao, mantenha a porta aberta sem pressao.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
+      `${systemPrompt}\n\nVoce e o AGENTE 1 (ATENDENTE), unico que fala com o cliente.\nUse os dados do AGENTE 2 (BUSCADOR) e AGENTE 3 (ANALISADOR).\n\nRegras finais:\n- Nao invente dados.\n- Se ask_clarification=true, faca apenas 1 pergunta curta e objetiva.\n- Nao repita a mesma pergunta no inicio e no fim da resposta.\n- Evite perguntar sobre cor por iniciativa propria.\n- Se o cliente perguntar por cor, envie o link do produto (se ainda nao foi enviado na conversa) e diga que as cores disponiveis aparecem ao abrir o link.\n- Se recomendar produtos, maximo 2 opcoes.\n- Se data_agent.status = "dado_indisponivel" por permissao da API, diga exatamente: "Esse dado requer uma permissão adicional que não está ativa no momento."\n- Se houve venda, confirme proximo passo com link do produto/carrinho.\n- Se nao houve conversao, mantenha a porta aberta sem pressao.\n- Linguagem de atendimento do dia a dia, em portugues do Brasil.`,
       JSON.stringify({
         planner,
         data_agent: dataAgent,
